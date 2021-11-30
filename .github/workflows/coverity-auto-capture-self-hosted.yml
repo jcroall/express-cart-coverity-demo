@@ -39,6 +39,7 @@ jobs:
         if: ${{github.event_name == 'push'}}
         # TODO: Should this only run for master, other specific names?
         run: |
+          env
           echo Ensure that stream "$COVERITY_STREAM_NAME" exists
           cov-manage-im --url $COVERITY_URL --on-new-cert trust --mode streams --add -set name:"$COVERITY_STREAM_NAME" || true
 
