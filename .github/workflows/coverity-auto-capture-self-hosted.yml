@@ -54,7 +54,9 @@ jobs:
           cov-format-errors --dir idir --security-file coverity-license.dat --json-output-v8 coverity-full-results.json
 
       - name: Export Coverity Results to SARIF (Full)
-        run: python3 ./synopsys-github-tools/github-export-coverity-issues.py --coverity-json coverity-full-results.json --debug 9
+        run: |
+          ls -l public/javascripts/expressCart.js
+          python3 ./synopsys-github-tools/github-export-coverity-issues.py --coverity-json coverity-full-results.json --debug 9
         if: ${{github.event_name == 'push'}}
         
       - name: Get Pull Request Changeset
