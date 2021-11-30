@@ -17,7 +17,7 @@ jobs:
       COV_USER: ${{ secrets.COVERITY_USER }}
       COVERITY_PASSPHRASE: ${{ secrets.COVERITY_PASSPHRASE }}
       COVERITY_LICENSE: ${{ secrets.COVERITY_LICENSE }}
-      SECURITY_GATE_ARGS: --new
+      SECURITY_GATE_VIEW: OWASP Web Top 10
       COVERITY_CHECKERS: --webapp-security
       SYNOPSYS_GITHUB_TOOLS_REPO: https://github.com/synopsys-sig-community/synopsys-github-tools
 
@@ -40,7 +40,9 @@ jobs:
           env
           export COVERITY_STREAM_NAME=${GITHUB_REPOSITORY##*/}-${GITHUB_REF##*/}
           echo Ensure that stream "$COVERITY_STREAM_NAME" exists
+          cov-manage-im --url $COVERITY_URL --on-new-cert trust --mode projects --add --set name:"$COVERITY_STREAM_NAME" || true
           cov-manage-im --url $COVERITY_URL --on-new-cert trust --mode streams --add -set name:"$COVERITY_STREAM_NAME" || true
+          cov-manage-im --url $COVERITY_URL --on-new-cert trust --mode projects --update --name "$COVERITY_STREAM_NAME" --insert stream:"$COVERITY_STREAM_NAME"
 
       - name: Coverity Scan (Full analysis)
         if: ${{github.event_name == 'push'}}
@@ -88,3 +90,16 @@ jobs:
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: synopsys-coverity-github-sarif.json
+
+      - name: Export Coverity Results to SARIF (Full)
+        run: python3 ./synopsys-github-tools/github-export-coverity-issues.py --coverity-json coverity-full-results.json --debug 9
+        if: ${{github.event_name == 'push'}}
+
+      - name: Coverity Security Gate
+        if: ${{github.event_name == 'push'}}
+        run: |
+          COVERITY_STREAM_NAME=${GITHUB_REPOSITORY##*/}-${GITHUB_REF##*/}
+          COVERITY_VIEW_ESCAPED=`jq -rn --arg x '$SECURITY_GATE_VIEW' '$x|@uri'`
+          curl -fLsS --user $COV_USER:$COVERITY_PASSPHRASE $COVERITY_URL/api/viewContents/issues/v1/$COVERITY_VIEW_ESCAPED?projectId=$COVERITY_STREAM_NAME > security-gate-results.json
+          if [ $(cat security-gate-results.json | jq .viewContentsV1.totalRows) -ne 0 ]; then cat results.json | jq .viewContentsV1.rows; exit 1; fi
+
