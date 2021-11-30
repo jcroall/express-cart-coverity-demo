@@ -39,10 +39,10 @@ jobs:
         if: ${{github.event_name == 'push'}}
         # TODO: Should this only run for master, other specific names?
         run: |
-          cov-manage-im --url $COVERITY_URL --mode streams --show --name "$COVERITY_STREAM_NAME"
+          cov-manage-im --url $COVERITY_URL --on-new-cert trust --mode streams --show --name "$COVERITY_STREAM_NAME"
           if [ $? == 1]; then
             echo Create stream "$COVERITY_STREAM_NAME"
-            cov-manage-im --url $COVERITY_URL --mode streams --add -set name:"$COVERITY_STREAM_NAME"
+            cov-manage-im --url $COVERITY_URL --on-new-cert trust --mode streams --add -set name:"$COVERITY_STREAM_NAME"
           fi
 
       - name: Coverity Scan (Full analysis)
@@ -51,7 +51,7 @@ jobs:
         run: |
           cov-capture --dir idir --project-dir .
           cov-analyze --dir idir $COVERITY_CHECKERS
-          cov-commit-defects --dir idir --ticker-mode none --url $COVERITY_URL --on-new-cert trust --stream $COVERITY_STREAM --scm git --description "GitHub Workflow $GITHUB_WORKFLOW for $GITHUB_REPO" --version $GITHUB_SHA
+          cov-commit-defects --dir idir --on-new-cert trust --ticker-mode none --url $COVERITY_URL --on-new-cert trust --stream $COVERITY_STREAM --scm git --description "GitHub Workflow $GITHUB_WORKFLOW for $GITHUB_REPO" --version $GITHUB_SHA
 
       #- name: Export Coverity Results to SARIF (Full)
       #  run: python3 ./synopsys-github-tools/github-export-polaris-issues.py
