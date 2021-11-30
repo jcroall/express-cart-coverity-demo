@@ -20,6 +20,8 @@ jobs:
       SECURITY_GATE_ARGS: --new
       COVERITY_CHECKERS: --webapp-security
       SYNOPSYS_GITHUB_TOOLS_REPO: https://github.com/synopsys-sig-community/synopsys-github-tools
+      COVERITY_STREAM_NAME: ${GITHUB_REPOSITORY}-${GITHUB_REF}
+
 
     steps:
       - uses: actions/checkout@v2
@@ -35,8 +37,6 @@ jobs:
 
       - name: Create Coverity Stream
         if: ${{github.event_name == 'push'}}
-        env:
-          COVERITY_STREAM_NAME: "$GITHUB_REPOSITORY"-"$GITHUB_REF"
         # TODO: Should this only run for master, other specific names?
         run: |
           cov-manage-im --url $COVERITY_URL --mode streams --show --name "$COVERITY_STREAM_NAME"
@@ -47,8 +47,7 @@ jobs:
 
       - name: Coverity Scan (Full analysis)
         if: ${{github.event_name == 'push'}}
-        env:
-          COVERITY_STREAM_NAME: "$GITHUB_REPOSITORY"-"$GITHUB_REF"
+
         run: |
           cov-capture --dir idir --project-dir .
           cov-analyze --dir idir $COVERITY_CHECKERS
