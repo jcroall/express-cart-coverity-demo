@@ -104,5 +104,4 @@ jobs:
           COVERITY_STREAM_NAME=${GITHUB_REPOSITORY##*/}-${GITHUB_REF##*/}
           COVERITY_VIEW_ESCAPED=`jq -rn --arg x "$SECURITY_GATE_VIEW" '$x|@uri'`
           curl -kfLsS --user $COV_USER:$COVERITY_PASSPHRASE $COVERITY_URL/api/viewContents/issues/v1/$COVERITY_VIEW_ESCAPED?projectId=$COVERITY_STREAM_NAME > security-gate-results.json
-          if [ $(cat security-gate-results.json | jq .viewContentsV1.totalRows) -ne 0 ]; then cat results.json | jq .viewContentsV1.rows; exit 1; fi
-
+          if [ $(cat security-gate-results.json | jq .viewContentsV1.totalRows) -ne 0 ]; then cat security-gate-results.json | jq .viewContentsV1.rows; exit 1; fi
