@@ -17,7 +17,7 @@ jobs:
       COV_USER: ${{ secrets.COVERITY_USER }}
       COVERITY_PASSPHRASE: ${{ secrets.COVERITY_PASSPHRASE }}
       COVERITY_LICENSE: ${{ secrets.COVERITY_LICENSE }}
-      SECURITY_GATE_ARGS: --new
+      SECURITY_GATE_VIEW: OWASP Web Top 10
       COVERITY_CHECKERS: --webapp-security
       SYNOPSYS_GITHUB_TOOLS_REPO: https://github.com/synopsys-sig-community/synopsys-github-tools
 
@@ -35,38 +35,74 @@ jobs:
 
       - name: Create Coverity Stream
         if: ${{github.event_name == 'push'}}
-        env:
-          COVERITY_STREAM_NAME: "$GITHUB_REPOSITORY"-"$GITHUB_REF"
         # TODO: Should this only run for master, other specific names?
         run: |
-          cov-manage-im --url $COVERITY_URL --mode streams --show --name "$COVERITY_STREAM_NAME"
-          if [ $? == 1]; then
-            echo Create stream "$COVERITY_STREAM_NAME"
-            cov-manage-im --url $COVERITY_URL --mode streams --add -set name:"$COVERITY_STREAM_NAME"
-          fi
+          env
+          export COVERITY_STREAM_NAME=${GITHUB_REPOSITORY##*/}-${GITHUB_REF##*/}
+          echo Ensure that stream "$COVERITY_STREAM_NAME" exists
+          cov-manage-im --url $COVERITY_URL --on-new-cert trust --mode projects --add --set name:"$COVERITY_STREAM_NAME" || true
+          cov-manage-im --url $COVERITY_URL --on-new-cert trust --mode streams --add -set name:"$COVERITY_STREAM_NAME" || true
+          cov-manage-im --url $COVERITY_URL --on-new-cert trust --mode projects --update --name "$COVERITY_STREAM_NAME" --insert stream:"$COVERITY_STREAM_NAME"
 
       - name: Coverity Scan (Full analysis)
         if: ${{github.event_name == 'push'}}
-        env:
-          COVERITY_STREAM_NAME: "$GITHUB_REPOSITORY"-"$GITHUB_REF"
         run: |
+          export COVERITY_STREAM_NAME=${GITHUB_REPOSITORY##*/}-${GITHUB_REF##*/}
           cov-capture --dir idir --project-dir .
-          cov-analyze --dir idir $COVERITY_CHECKERS
-          cov-commit-defects --dir idir --ticker-mode none --url $COVERITY_URL --on-new-cert trust --stream $COVERITY_STREAM --scm git --description "GitHub Workflow $GITHUB_WORKFLOW for $GITHUB_REPO" --version $GITHUB_SHA
+          cov-analyze --dir idir --strip-path `pwd` --security-file coverity-license.dat $COVERITY_CHECKERS
+          cov-commit-defects --dir idir --security-file coverity-license.dat --ticker-mode none --url $COVERITY_URL --on-new-cert trust --stream $COVERITY_STREAM_NAME --scm git --description "GitHub Workflow $GITHUB_WORKFLOW for $GITHUB_REPO" --version $GITHUB_SHA
+          cov-format-errors --dir idir --security-file coverity-license.dat --json-output-v8 coverity-full-results.json
 
-      #- name: Export Coverity Results to SARIF (Full)
-      #  run: python3 ./synopsys-github-tools/github-export-polaris-issues.py
-      #  if: ${{github.event_name == 'push'}}
+      - name: Export Coverity Results to SARIF (Full)
+        run: |
+          ls -l public/javascripts/expressCart.js
+          python3 ./synopsys-github-tools/github-export-coverity-issues.py --coverity-json coverity-full-results.json --debug 9
+        if: ${{github.event_name == 'push'}}
+        
+      - name: Get Pull Request Changeset
+        if: ${{ github.event_name == 'pull_request' }}
+        id: changeset
+        uses: jitterbit/get-changed-files@v1
+        with:
+          format: json
+        
+      - name: Coverity Scan (Incremental analysis)
+        if: ${{github.event_name == 'pull_request'}}
+        run: |
+          export COVERITY_STREAM_NAME=${GITHUB_REPOSITORY##*/}-${GITHUB_REF##*/}
+          echo ${{ steps.changeset.outputs.added_modified }}
+          readarray -t changed_files <<<"$(jq -r '.[]' <<<'${{ steps.changeset.outputs.added_modified }}')"
+          for changed_file in ${changed_files[@]}; do
+            echo ${changed_file} >> coverity-files-to-scan.txt
+            echo "Scan changed file ${changed_file}."
+          done
+          cov-capture --dir idir --source-list coverity-files-to-scan.txt
+          cov-run-desktop --dir idir --strip-path `pwd` --url $COVERITY_URL --stream $COVERITY_STREAM_NAME --present-in-reference false \
+            --ignore-uncapturable-inputs true --exit1-if-defects true coverity-files-to-scan.txt
+            
+      - name: Export Coverity Results to SARIF (Incremental)
+        run: python3 ./synopsys-github-tools/github-export-coverity-issues.py --coverity-json coverity-full-results.json --comment-on-github-pr --debug 9
+        if: ${{github.event_name == 'pull_request'}}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+        
 
-      #- name: Export Coverity Results to SARIF (Incremental)
-      #  run: python3 ./synopsys-github-tools/github-export-coverity-issues.py --coverity-json ./.synopsys/polaris/data/coverity/*/idir/incremental-results/incremental-results.json --polaris --comment-on-github-pr
-      #  env:
-      #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #  if: ${{github.event_name == 'pull_request'}}
-      #  continue-on-error: true
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v1
+        with:
+          # Path to SARIF file relative to the root of the repository
+          sarif_file: synopsys-coverity-github-sarif.json
 
-      #- name: Upload SARIF file
-      #  uses: github/codeql-action/upload-sarif@v1
-      #  with:
-      #    # Path to SARIF file relative to the root of the repository
-      #    sarif_file: synopsys-coverity-github-sarif.json
+      - name: Export Coverity Results to SARIF (Full)
+        run: python3 ./synopsys-github-tools/github-export-coverity-issues.py --coverity-json coverity-full-results.json --debug 9
+        if: ${{github.event_name == 'push'}}
+
+      - name: Coverity Security Gate
+        if: ${{github.event_name == 'push'}}
+        run: |
+          COVERITY_STREAM_NAME=${GITHUB_REPOSITORY##*/}-${GITHUB_REF##*/}
+          COVERITY_VIEW_ESCAPED=`jq -rn --arg x '$SECURITY_GATE_VIEW' '$x|@uri'`
+          curl -kfLsS --user $COV_USER:$COVERITY_PASSPHRASE $COVERITY_URL/api/viewContents/issues/v1/$COVERITY_VIEW_ESCAPED?projectId=$COVERITY_STREAM_NAME > security-gate-results.json
+          if [ $(cat security-gate-results.json | jq .viewContentsV1.totalRows) -ne 0 ]; then cat results.json | jq .viewContentsV1.rows; exit 1; fi
+
