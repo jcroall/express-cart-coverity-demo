@@ -69,7 +69,8 @@ jobs:
       - name: Coverity Scan (Incremental analysis)
         if: ${{github.event_name == 'pull_request'}}
         run: |
-          export COVERITY_STREAM_NAME=${GITHUB_REPOSITORY##*/}-${GITHUB_REF##*/}
+          env
+          export COVERITY_STREAM_NAME=${GITHUB_REPOSITORY##*/}-$BASE_BRANCH
           echo ${{ steps.changeset.outputs.added_modified }}
           readarray -t changed_files <<<"$(jq -r '.[]' <<<'${{ steps.changeset.outputs.added_modified }}')"
           for changed_file in ${changed_files[@]}; do
@@ -79,6 +80,8 @@ jobs:
           cov-capture --dir idir --source-list coverity-files-to-scan.txt
           cov-run-desktop --dir idir --strip-path `pwd` --url $COVERITY_URL --stream $COVERITY_STREAM_NAME --present-in-reference false \
             --ignore-uncapturable-inputs true --exit1-if-defects true coverity-files-to-scan.txt
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
             
       - name: Export Coverity Results to SARIF (Incremental)
         run: python3 ./synopsys-github-tools/github-export-coverity-issues.py --coverity-json coverity-full-results.json --comment-on-github-pr --debug 9
