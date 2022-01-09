@@ -79,13 +79,14 @@ jobs:
           cov-capture --dir idir --source-list coverity-files-to-scan.txt
           cov-run-desktop --dir idir --strip-path `pwd` --url $COVERITY_URL --stream $COVERITY_STREAM_NAME --present-in-reference false \
             --ignore-uncapturable-inputs true --exit1-if-defects true coverity-files-to-scan.txt
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
             
       - name: Export Coverity Results to SARIF (Incremental)
         run: python3 ./synopsys-github-tools/github-export-coverity-issues.py --coverity-json coverity-full-results.json --comment-on-github-pr --debug 9
         if: ${{github.event_name == 'pull_request'}}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BASE_BRANCH: ${{ github.base_ref }}
         continue-on-error: true
         
 
